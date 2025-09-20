@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getAuthSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, prismaReady, isDatabaseConfigured } from "@/lib/prisma";
 
 const profileSchema = z.object({
   name: z.string().min(2).max(60),
@@ -11,6 +11,13 @@ const profileSchema = z.object({
 
 export async function PATCH(request: Request) {
   try {
+    if (!isDatabaseConfigured) {
+      return NextResponse.json(
+        { message: "Profile updates are currently unavailable because the database connection is not configured." },
+        { status: 503 },
+      );
+    }
+    await prismaReady;
     const session = await getAuthSession();
 
     if (!session?.user?.id) {

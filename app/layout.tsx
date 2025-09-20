@@ -1,53 +1,18 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
-
+import { cookies } from "next/headers";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
+import { UIProvider } from "@/components/providers/ui-provider";
+import { THEME_COOKIE, type Theme } from "@/components/providers/theme-provider";
 import { cn } from "@/lib/utils";
 import { getAuthSession } from "@/lib/auth";
+import { getServerLocale } from "@/lib/i18n/server";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 
 import "./globals.css";
 
-const geistSans = localFont({
-  src: [
-    {
-      path: "../node_modules/geist/dist/fonts/geist-sans/Geist-Regular.woff2",
-      style: "normal",
-      weight: "400",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-sans/Geist-Medium.woff2",
-      style: "normal",
-      weight: "500",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-sans/Geist-SemiBold.woff2",
-      style: "normal",
-      weight: "600",
-    },
-  ],
-  variable: "--font-geist-sans",
-});
-
-const geistMono = localFont({
-  src: [
-    {
-      path: "../node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.woff2",
-      style: "normal",
-      weight: "400",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-mono/GeistMono-Medium.woff2",
-      style: "normal",
-      weight: "500",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-mono/GeistMono-SemiBold.woff2",
-      style: "normal",
-      weight: "600",
-    },
-  ],
-  variable: "--font-geist-mono",
-});
+const geistSans = GeistSans;
+const geistMono = GeistMono;
 
 export const metadata: Metadata = {
   title: "Atlas AI Platform",
@@ -61,9 +26,13 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getAuthSession();
+  const cookieStore = await cookies();
+  const initialLocale = await getServerLocale();
+  const storedTheme = cookieStore.get(THEME_COOKIE)?.value;
+  const initialTheme: Theme = storedTheme === "light" ? "light" : "dark";
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={initialLocale} suppressHydrationWarning>
       <body
         className={cn(
           "min-h-screen bg-background font-sans text-foreground antialiased",
@@ -71,7 +40,9 @@ export default async function RootLayout({
           geistMono.variable,
         )}
       >
-        <AuthSessionProvider session={session}>{children}</AuthSessionProvider>
+        <UIProvider initialLocale={initialLocale} initialTheme={initialTheme}>
+          <AuthSessionProvider session={session}>{children}</AuthSessionProvider>
+        </UIProvider>
       </body>
     </html>
   );

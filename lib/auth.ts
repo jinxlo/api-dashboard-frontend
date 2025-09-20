@@ -5,15 +5,29 @@ import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { z } from "zod";
 
-import { prisma } from "./prisma";
+import { prisma, prismaReady, isDatabaseConfigured } from "./prisma";
+import { resolveNextAuthSecret } from "./auth-secret";
+import { getDemoUserConfig } from "./demo-user";
+import { findPersistedUserByEmail } from "./user-store";
 
 const credentialsSchema = z.object({
   email: z.string().email({ message: "Valid email is required" }),
   password: z.string().min(6, { message: "Password is required" }),
 });
 
+const demoUserConfig = getDemoUserConfig();
+
+const resolvedAuthSecret = resolveNextAuthSecret();
+
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = resolvedAuthSecret;
+}
+
+await prismaReady;
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  secret: resolvedAuthSecret,
+  adapter: isDatabaseConfigured ? PrismaAdapter(prisma) : undefined,
   session: {
     strategy: "jwt",
   },
@@ -35,6 +49,47 @@ export const authOptions: NextAuthOptions = {
         }
 
         const { email, password } = parsed.data;
+
+        if (!isDatabaseConfigured) {
+          const normalizedEmail = email.trim().toLowerCase();
+          const persistedUser = await findPersistedUserByEmail(normalizedEmail);
+
+          if (persistedUser) {
+            const passwordMatches = await compare(password, persistedUser.passwordHash);
+
+            if (!passwordMatches) {
+              throw new Error("Invalid email or password");
+            }
+
+            return {
+              id: persistedUser.id,
+              email: persistedUser.email,
+              name: persistedUser.name,
+            };
+          }
+
+          const normalizedDemoEmail = demoUserConfig.email.trim().toLowerCase();
+
+          if (normalizedEmail !== normalizedDemoEmail) {
+            throw new Error("No user found with that email");
+          }
+
+          const passwordMatches = demoUserConfig.passwordHash
+            ? await compare(password, demoUserConfig.passwordHash)
+            : demoUserConfig.password !== null && password === demoUserConfig.password;
+
+          if (!passwordMatches) {
+            throw new Error("Invalid email or password");
+          }
+
+          return {
+            id: demoUserConfig.id,
+            email: demoUserConfig.email,
+            name: demoUserConfig.name,
+          };
+        }
+
+        await prismaReady;
 
         const user = await prisma.user.findUnique({
           where: { email },
@@ -63,7 +118,8 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.name = user.name;
         token.email = user.email;
-      } else if (token.sub && (!token.name || !token.email)) {
+      } else if (isDatabaseConfigured && token.sub && (!token.name || !token.email)) {
+        await prismaReady;
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
           select: { name: true, email: true },
