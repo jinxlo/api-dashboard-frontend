@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getAuthSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, prismaReady, isDatabaseConfigured } from "@/lib/prisma";
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(8),
@@ -12,6 +12,13 @@ const passwordSchema = z.object({
 
 export async function PATCH(request: Request) {
   try {
+    if (!isDatabaseConfigured) {
+      return NextResponse.json(
+        { message: "Password updates are currently unavailable because the database connection is not configured." },
+        { status: 503 },
+      );
+    }
+    await prismaReady;
     const session = await getAuthSession();
 
     if (!session?.user?.id) {
