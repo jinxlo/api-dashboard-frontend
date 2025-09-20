@@ -1,8 +1,13 @@
+import Link from "next/link";
+
 import { ApiKeyManager } from "@/components/dashboard/api-key-manager";
 import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getServerDictionary, getServerLocale } from "@/lib/i18n/server";
 import { translate } from "@/lib/i18n";
+
+export const dynamic = "force-dynamic";
 
 export default async function KeysPage() {
   const locale = await getServerLocale();
@@ -14,7 +19,11 @@ export default async function KeysPage() {
       <PageHeader
         title={t("apiKeys.heading")}
         description={t("apiKeys.description")}
-        docsHref="/docs"
+        actions={
+          <Button asChild size="sm">
+            <Link href="/keys?create=1">{t("apiKeys.create")}</Link>
+          </Button>
+        }
       />
       <Card className="border-border/70 bg-muted/30">
         <CardContent className="space-y-2 py-5 text-sm text-muted-foreground">

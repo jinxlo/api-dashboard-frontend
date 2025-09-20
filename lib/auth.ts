@@ -7,15 +7,11 @@ import { z } from "zod";
 
 import { prisma, prismaReady, isDatabaseConfigured } from "./prisma";
 import { resolveNextAuthSecret } from "./auth-secret";
-import { getDemoUserConfig } from "./demo-user";
-import { findPersistedUserByEmail } from "./user-store";
 
 const credentialsSchema = z.object({
   email: z.string().email({ message: "Valid email is required" }),
   password: z.string().min(6, { message: "Password is required" }),
 });
-
-const demoUserConfig = getDemoUserConfig();
 
 const resolvedAuthSecret = resolveNextAuthSecret();
 
@@ -23,7 +19,9 @@ if (!process.env.NEXTAUTH_SECRET) {
   process.env.NEXTAUTH_SECRET = resolvedAuthSecret;
 }
 
-await prismaReady;
+if (isDatabaseConfigured) {
+  await prismaReady;
+}
 
 export const authOptions: NextAuthOptions = {
   secret: resolvedAuthSecret,
@@ -51,42 +49,7 @@ export const authOptions: NextAuthOptions = {
         const { email, password } = parsed.data;
 
         if (!isDatabaseConfigured) {
-          const normalizedEmail = email.trim().toLowerCase();
-          const persistedUser = await findPersistedUserByEmail(normalizedEmail);
-
-          if (persistedUser) {
-            const passwordMatches = await compare(password, persistedUser.passwordHash);
-
-            if (!passwordMatches) {
-              throw new Error("Invalid email or password");
-            }
-
-            return {
-              id: persistedUser.id,
-              email: persistedUser.email,
-              name: persistedUser.name,
-            };
-          }
-
-          const normalizedDemoEmail = demoUserConfig.email.trim().toLowerCase();
-
-          if (normalizedEmail !== normalizedDemoEmail) {
-            throw new Error("No user found with that email");
-          }
-
-          const passwordMatches = demoUserConfig.passwordHash
-            ? await compare(password, demoUserConfig.passwordHash)
-            : demoUserConfig.password !== null && password === demoUserConfig.password;
-
-          if (!passwordMatches) {
-            throw new Error("Invalid email or password");
-          }
-
-          return {
-            id: demoUserConfig.id,
-            email: demoUserConfig.email,
-            name: demoUserConfig.name,
-          };
+          throw new Error("Database connection is not configured");
         }
 
         await prismaReady;

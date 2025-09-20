@@ -55,7 +55,11 @@ export function SignInForm({ tone = "default", className, showHeading = true }: 
     });
 
     if (result?.error) {
-      setError(t("auth.errors.generic"));
+      const message =
+        result.error === "Database connection is not configured"
+          ? t("auth.errors.database")
+          : result.error;
+      setError(message || t("auth.errors.generic"));
       return;
     }
 
@@ -81,7 +85,11 @@ export function SignInForm({ tone = "default", className, showHeading = true }: 
     });
 
     if (result?.error) {
-      setError(t("auth.errors.generic"));
+      const message =
+        result.error === "Database connection is not configured"
+          ? t("auth.errors.database")
+          : result.error;
+      setError(message || t("auth.errors.generic"));
       return;
     }
 

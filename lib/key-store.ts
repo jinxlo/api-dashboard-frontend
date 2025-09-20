@@ -1,9 +1,15 @@
 import { randomBytes } from "crypto";
-import { promises as fs } from "fs";
 
-import { ensureDemoDataFile } from "./demo-storage";
+import { prisma, prismaReady, isDatabaseConfigured } from "./prisma";
 
-interface PersistedKeyRecord {
+export class DatabaseNotConfiguredError extends Error {
+  constructor() {
+    super("Database connection is not configured");
+    this.name = "DatabaseNotConfiguredError";
+  }
+}
+
+export interface PersistedKeyRecord {
   id: string;
   key: string;
   userId: string;
@@ -12,59 +18,65 @@ interface PersistedKeyRecord {
   modelIds: string[];
 }
 
-const STORE_FILE_NAME = "demo-api-keys.json";
-const INITIAL_PAYLOAD = JSON.stringify({ keys: [] as PersistedKeyRecord[] }, null, 2);
+function generateSecretKey() {
+  return `sk-${randomBytes(24).toString("base64url")}`;
+}
 
-let storeFilePath: string | null = null;
-
-async function ensureStore() {
-  if (!storeFilePath) {
-    storeFilePath = await ensureDemoDataFile(STORE_FILE_NAME, INITIAL_PAYLOAD);
+async function ensureDatabaseConnection() {
+  if (!isDatabaseConfigured) {
+    throw new DatabaseNotConfiguredError();
   }
-
-  return storeFilePath;
+  await prismaReady;
 }
 
-async function readStore(): Promise<PersistedKeyRecord[]> {
-  const filePath = await ensureStore();
-  const raw = await fs.readFile(filePath, "utf8");
-  const parsed = JSON.parse(raw) as { keys?: PersistedKeyRecord[] };
-  return Array.isArray(parsed.keys) ? parsed.keys : [];
+export async function listKeysForUser(userId: string): Promise<PersistedKeyRecord[]> {
+  await ensureDatabaseConnection();
+
+  const keys = await prisma.apiKey.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return keys.map((key) => ({
+    id: key.id,
+    key: key.key,
+    userId: key.userId,
+    createdAt: key.createdAt.toISOString(),
+    label: key.label ?? undefined,
+    modelIds: key.modelIds,
+  }));
 }
 
-async function writeStore(keys: PersistedKeyRecord[]) {
-  const filePath = await ensureStore();
-  const payload = { keys };
-  await fs.writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
-}
+export async function createKeyForUser(
+  userId: string,
+  modelIds: string[],
+  label?: string,
+): Promise<PersistedKeyRecord> {
+  await ensureDatabaseConnection();
 
-export async function listKeysForUser(userId: string) {
-  const keys = await readStore();
-  return keys.filter((key) => key.userId === userId);
-}
+  const created = await prisma.apiKey.create({
+    data: {
+      userId,
+      key: generateSecretKey(),
+      label: label?.trim() || null,
+      modelIds: Array.from(new Set(modelIds)),
+    },
+  });
 
-export async function createKeyForUser(userId: string, modelIds: string[], label?: string) {
-  const id = randomBytes(12).toString("hex");
-  const key = `sk-${randomBytes(24).toString("base64url")}`;
-  const createdAt = new Date().toISOString();
-  const record: PersistedKeyRecord = {
-    id,
-    key,
-    userId,
-    createdAt,
-    label: label?.trim() || undefined,
-    modelIds: Array.from(new Set(modelIds)),
+  return {
+    id: created.id,
+    key: created.key,
+    userId: created.userId,
+    createdAt: created.createdAt.toISOString(),
+    label: created.label ?? undefined,
+    modelIds: created.modelIds,
   };
-
-  const keys = await readStore();
-  keys.push(record);
-  await writeStore(keys);
-
-  return record;
 }
 
 export async function deleteKeyForUser(userId: string, keyId: string) {
-  const keys = await readStore();
-  const nextKeys = keys.filter((key) => !(key.userId === userId && key.id === keyId));
-  await writeStore(nextKeys);
+  await ensureDatabaseConnection();
+
+  await prisma.apiKey.deleteMany({
+    where: { id: keyId, userId },
+  });
 }

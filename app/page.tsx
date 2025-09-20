@@ -3,6 +3,8 @@ import { SignInForm } from "@/components/auth/sign-in-form";
 import { getServerDictionary, getServerLocale } from "@/lib/i18n/server";
 import { translate } from "@/lib/i18n";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const locale = await getServerLocale();
   const dictionary = await getServerDictionary(locale);

@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma, prismaReady, isDatabaseConfigured } from "@/lib/prisma";
-import { createPersistedUser, findPersistedUserByEmail } from "@/lib/user-store";
 
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name is required" }),
@@ -24,20 +23,10 @@ export async function POST(request: Request) {
     const { name, email, password } = parsed.data;
 
     if (!isDatabaseConfigured) {
-      const existing = await findPersistedUserByEmail(email);
-
-      if (existing) {
-        return NextResponse.json({ message: "An account with this email already exists" }, { status: 409 });
-      }
-
-      const hashedPassword = await hash(password, 12);
-      await createPersistedUser({
-        name,
-        email,
-        passwordHash: hashedPassword,
-      });
-
-      return NextResponse.json({ message: "Account created" }, { status: 201 });
+      return NextResponse.json(
+        { message: "Database connection is not configured" },
+        { status: 503 },
+      );
     }
 
     await prismaReady;

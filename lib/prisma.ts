@@ -16,28 +16,37 @@ const DIRECT_DATABASE_ENV_KEYS = [
 ] as const;
 
 const PLACEHOLDER_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/postgres";
+const PLACEHOLDER_FLAG = "__ATLAS_DATABASE_PLACEHOLDER";
 
-type ResolvedDatabaseUrl = {
-  url: string;
-  fromEnvironment: boolean;
-};
+let resolvedFromEnvironment = false;
 
-function resolveDatabaseUrl(): ResolvedDatabaseUrl {
+function resolveDatabaseUrl(): string {
   for (const key of DATABASE_ENV_KEYS) {
     const value = process.env[key]?.trim();
     if (value) {
+      if (
+        key === "DATABASE_URL" &&
+        process.env[PLACEHOLDER_FLAG] === "1" &&
+        value === PLACEHOLDER_DATABASE_URL
+      ) {
+        continue;
+      }
       if (key !== "DATABASE_URL") {
         process.env.DATABASE_URL = value;
       }
-      return { url: value, fromEnvironment: true };
+      delete process.env[PLACEHOLDER_FLAG];
+      resolvedFromEnvironment = true;
+      return value;
     }
   }
 
   if (!process.env.DATABASE_URL) {
     process.env.DATABASE_URL = PLACEHOLDER_DATABASE_URL;
+    process.env[PLACEHOLDER_FLAG] = "1";
   }
 
-  return { url: process.env.DATABASE_URL, fromEnvironment: process.env.DATABASE_URL !== PLACEHOLDER_DATABASE_URL };
+  resolvedFromEnvironment = false;
+  return process.env.DATABASE_URL;
 }
 
 function resolveDirectDatabaseUrl(fallback: string) {
@@ -58,7 +67,7 @@ function resolveDirectDatabaseUrl(fallback: string) {
   return process.env.DIRECT_URL;
 }
 
-const { url: databaseUrl, fromEnvironment } = resolveDatabaseUrl();
+const databaseUrl = resolveDatabaseUrl();
 resolveDirectDatabaseUrl(databaseUrl);
 
 const globalForPrisma = globalThis as unknown as {
@@ -73,8 +82,15 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   },
 });
 
-export const prismaReady = Promise.resolve();
-export const isDatabaseConfigured = fromEnvironment;
+export const prismaReady = resolvedFromEnvironment
+  ? prisma
+      .$connect()
+      .catch((error) => {
+        console.error("Failed to establish Prisma connection", error);
+        throw error;
+      })
+  : Promise.resolve();
+export const isDatabaseConfigured = resolvedFromEnvironment;
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

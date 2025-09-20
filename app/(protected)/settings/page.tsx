@@ -7,6 +7,8 @@ import { getAuthSession } from "@/lib/auth";
 import { prisma, prismaReady, isDatabaseConfigured } from "@/lib/prisma";
 import { PageHeader } from "@/components/layout/page-header";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const session = await getAuthSession();
 
@@ -18,7 +20,6 @@ export default async function SettingsPage() {
     <PageHeader
       title="Account"
       description="Manage the profile that appears across Atlas and secure your sign-in credentials."
-      docsHref="/docs"
     />
   );
 
@@ -30,13 +31,13 @@ export default async function SettingsPage() {
           <CardHeader>
             <CardTitle>Database connection required</CardTitle>
             <CardDescription>
-              Atlas is currently running in demo mode. Connect a Postgres database and run the Prisma migrations to persist user updates.
+              Connect your production Postgres database and apply the Prisma schema before updating your profile or password.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
             <ol className="list-decimal space-y-2 pl-4">
               <li>
-                Provision a Postgres instance (Vercel Postgres, Neon, Supabase or any compatible managed provider).
+                Provision a Postgres instance (Vercel Postgres, Neon, Supabase, or any compatible managed provider).
               </li>
               <li>
                 Set <code className="rounded bg-muted px-1 py-0.5">DATABASE_URL</code> (or the Vercel Postgres secrets) for your deployment.
@@ -45,11 +46,8 @@ export default async function SettingsPage() {
                 Run <code className="rounded bg-muted px-1 py-0.5">npx prisma migrate deploy</code> followed by <code className="rounded bg-muted px-1 py-0.5">npm run db:seed</code>.
               </li>
             </ol>
-            <p>
-              Until then, you can continue exploring the dashboard with the demo account <span className="font-medium text-foreground">{session.user.email}</span>.
-            </p>
-            <p>
-              Workspace information can still be adjusted from the <span className="font-medium text-foreground">Workspace</span> section of the sidebar.
+            <p className="text-sm text-muted-foreground">
+              Once the connection is in place you&apos;ll be able to update account details, rotate credentials, and manage keys for your workspace.
             </p>
           </CardContent>
         </Card>

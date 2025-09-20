@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getAuthSession } from "@/lib/auth";
-import { createKeyForUser, listKeysForUser } from "@/lib/key-store";
+import { createKeyForUser, listKeysForUser, DatabaseNotConfiguredError } from "@/lib/key-store";
 import { getModelById } from "@/lib/models";
 
 const adminApiUrl = process.env.KONG_ADMIN_API_URL;
@@ -104,8 +104,18 @@ export async function GET() {
     }
 
     if (!adminApiUrl) {
-      const keys = await listKeysForUser(session.user.id);
-      return NextResponse.json({ keys: keys.map((key) => presentKey(key)) });
+      try {
+        const keys = await listKeysForUser(session.user.id);
+        return NextResponse.json({ keys: keys.map((key) => presentKey(key)) });
+      } catch (error) {
+        if (error instanceof DatabaseNotConfiguredError) {
+          return NextResponse.json(
+            { message: "Database connection is not configured" },
+            { status: 503 },
+          );
+        }
+        throw error;
+      }
     }
 
     const response = await fetch(`${adminApiUrl}/consumers/${session.user.id}/key-auth`, {
@@ -163,8 +173,18 @@ export async function POST(request: Request) {
     const normalizedLabel = label?.trim() ? label.trim() : undefined;
 
     if (!adminApiUrl) {
-      const created = await createKeyForUser(session.user.id, modelIds, normalizedLabel);
-      return NextResponse.json(presentKey(created));
+      try {
+        const created = await createKeyForUser(session.user.id, modelIds, normalizedLabel);
+        return NextResponse.json(presentKey(created));
+      } catch (error) {
+        if (error instanceof DatabaseNotConfiguredError) {
+          return NextResponse.json(
+            { message: "Database connection is not configured" },
+            { status: 503 },
+          );
+        }
+        throw error;
+      }
     }
 
     await ensureConsumer(session.user.id);

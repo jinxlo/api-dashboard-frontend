@@ -7,8 +7,8 @@ Atlas AI Platform is a secure multi-tenant developer dashboard for provisioning 
 - 🔐 Authentication with NextAuth.js credentials provider and Prisma adapter
 - 🔑 API key lifecycle management integrated with the Kong Admin API, including model-scoped keys
 - 💬 Multi-modal playground covering language, text-to-speech, and text-to-image previews
-- 👤 Profile and password management with inline validation and graceful demo-mode messaging
-- 📊 Redesigned dashboard with environment overview, model catalogue, and key analytics
+- 👤 Profile and password management backed by Prisma and PostgreSQL
+- 📊 Dashboard summarises workspace status, database connectivity, and recent API keys
 
 ## Tech Stack
 
@@ -37,18 +37,15 @@ NEXTAUTH_SECRET="generate-a-secure-secret"
 NEXT_PUBLIC_KONG_API_URL="http://localhost:8000"
 KONG_ADMIN_API_URL="http://localhost:8001"
 KONG_PLAYGROUND_KEY="replace-with-eval-api-key"
-# Optional overrides for the demo login
-# DEMO_USER_EMAIL="demo@atlas.ai"
-# DEMO_USER_PASSWORD="AtlasDemo!2025"
-# DEMO_USER_PASSWORD_HASH=""
-# DEMO_USER_NAME="Atlas Demo"
-# DEMO_USER_ID="demo-user"
-# DEMO_DATA_DIR="/tmp/atlas-demo-data"
+# Optional: seed an initial user during setup
+# SEED_USER_EMAIL="founder@atlas.ai"
+# SEED_USER_PASSWORD="ReplaceMe!"
+# SEED_USER_NAME="Atlas Admin"
 ```
 
 ## Database
 
-Run the Prisma migrations to create the authentication schema (required for account creation and profile editing):
+Run the Prisma migrations to create the authentication schema (required for account creation and profile editing). All user, key, and profile data now relies on the configured database—there is no filesystem fallback:
 
 ```bash
 npx prisma migrate deploy
@@ -60,10 +57,10 @@ Generate the Prisma client:
 npx prisma generate
 ```
 
-Seed the demo login (defaults to `demo@atlas.ai` / `AtlasDemo!2025` unless `DEMO_USER_*` variables are supplied):
+Seed an initial user (requires `SEED_USER_EMAIL` and `SEED_USER_PASSWORD`):
 
 ```bash
-npm run db:seed
+SEED_USER_EMAIL=founder@atlas.ai SEED_USER_PASSWORD=ReplaceMe! npm run db:seed
 ```
 
 If you are in an offline environment you can bypass engine checksum checks with `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1`.
@@ -79,9 +76,7 @@ npm run dev
 
 Visit [http://localhost:3000](http://localhost:3000) to use the application. Create an account via the sign up page, then access the dashboard, playground, and settings areas.
 
-The seeded demo credentials (`demo@atlas.ai` / `AtlasDemo!2025`) are always available after `npm run db:seed` unless you override them with `DEMO_USER_*` values.
-
-If a database connection is not configured (for example in preview deployments), the application automatically falls back to the demo credentials so you can still explore the experience. Settings will surface deployment instructions until the database connection is in place. Set `DEMO_USER_PASSWORD_HASH` if you prefer to keep the password value private—when present the login form will prompt users to obtain the password from the environment instead of displaying it inline. Use `DEMO_DATA_DIR` to control where fallback demo data is persisted (defaults to `.data` locally and `/tmp/atlas-demo-data` on serverless platforms).
+If you skip the seed step you can register through the `/signup` flow once the database connection is configured.
 
 ## Kong Integration
 
@@ -91,7 +86,7 @@ The application expects Kong to manage API keys via the Key Authentication plugi
 2. Create new key credentials via `POST /consumers/{consumer}/key-auth`.
 3. Tag each key with the selected model scopes (`model:{id}`) so the dashboard can display access levels.
 
-Revoking a key issues `DELETE /consumers/{consumer}/key-auth/{keyId}`. The dashboard lists available keys by calling the Kong Admin API. When `KONG_ADMIN_API_URL` is not present (for example in local demos) the application falls back to a filesystem-backed store (defaulting to `.data/demo-api-keys.json` locally and `/tmp/atlas-demo-data/demo-api-keys.json` on Vercel) so you can still exercise the UI without external dependencies. Override the directory with `DEMO_DATA_DIR` if you need a different location.
+Revoking a key issues `DELETE /consumers/{consumer}/key-auth/{keyId}`. When `KONG_ADMIN_API_URL` is not present the application stores API keys in the PostgreSQL database, so the dashboard always reflects real data.
 
 ## Testing the Playground
 
@@ -115,7 +110,7 @@ Revoking a key issues `DELETE /consumers/{consumer}/key-auth/{keyId}`. The dashb
    - `DIRECT_URL` – Supabase direct connection string (no pooling) for migrations and seeding.
    - `NEXTAUTH_URL` – e.g. `https://your-app.vercel.app`.
    - `NEXTAUTH_SECRET` – generate a strong random value so session tokens remain valid across deploys.
-   - `KONG_ADMIN_API_URL`, `KONG_PLAYGROUND_KEY`, plus any `DEMO_USER_*` overrides or `DEMO_DATA_DIR` customizations you rely on.
+   - `KONG_ADMIN_API_URL`, `KONG_PLAYGROUND_KEY`, plus any seeding variables you plan to use.
    - (Optional) `SUPABASE_DB_URL` or `SUPABASE_PRISMA_URL` if you prefer to keep the original Supabase variable names; the app will map them automatically.
 3. **Run migrations against Supabase** – pull the Vercel environment locally and execute Prisma with the direct string:
    ```bash
@@ -125,12 +120,12 @@ Revoking a key issues `DELETE /consumers/{consumer}/key-auth/{keyId}`. The dashb
    npx prisma migrate deploy
    DIRECT_URL=$(grep DIRECT_URL .env.production.local | cut -d'=' -f2-) \
    DATABASE_URL=$(grep DATABASE_URL .env.production.local | cut -d'=' -f2-) \
-   npm run db:seed
+   SEED_USER_EMAIL=founder@atlas.ai SEED_USER_PASSWORD=ReplaceMe! npm run db:seed
    ```
-   The seed script provisions the demo login (`demo@atlas.ai` / `AtlasDemo!2025` by default) using the Supabase database.
+   The seed script provisions the user defined by `SEED_USER_EMAIL` and `SEED_USER_PASSWORD` using the Supabase database.
 4. **Deploy** – with the schema migrated and seed executed, run `vercel deploy`. The build pipeline already runs `prisma generate` so the Prisma client stays in sync even with cached installs.
 
-After deployment you can log in with the seeded credentials or register new users; all data persists in Supabase.
+After deployment you can sign in with the seeded credentials or register new users; all data persists in Supabase.
 
 ## License
 

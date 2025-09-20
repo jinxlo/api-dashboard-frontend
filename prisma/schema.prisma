@@ -19,6 +19,7 @@ model User {
   updatedAt     DateTime @updatedAt
   accounts      Account[]
   sessions      Session[]
+  apiKeys       ApiKey[]
 }
 
 model Account {
@@ -56,4 +57,15 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String?
+  modelIds  String[] @db.Text
+  createdAt DateTime @default(now())
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

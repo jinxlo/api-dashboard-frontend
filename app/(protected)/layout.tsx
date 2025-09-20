@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { AppHeader } from "@/components/layout/app-header";
-import { AppSidebar } from "@/components/layout/app-sidebar";
-import { WorkspaceProvider } from "@/components/providers/workspace-provider";
+import { AppShell } from "@/components/layout/app-shell";
 import { getAuthSession } from "@/lib/auth";
+import { isDatabaseConfigured } from "@/lib/prisma";
 
 export default async function ProtectedLayout({
   children,
@@ -17,14 +16,11 @@ export default async function ProtectedLayout({
   }
 
   return (
-    <WorkspaceProvider>
-      <div className="flex min-h-screen w-full bg-background">
-        <AppSidebar />
-        <div className="flex flex-1 flex-col">
-          <AppHeader />
-          <main className="flex-1 px-4 py-6 lg:px-8">{children}</main>
-        </div>
-      </div>
-    </WorkspaceProvider>
+    <AppShell
+      user={{ name: session.user.name, email: session.user.email }}
+      databaseConfigured={isDatabaseConfigured}
+    >
+      {children}
+    </AppShell>
   );
 }

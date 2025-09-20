@@ -5,9 +5,14 @@ const { hash } = require("bcryptjs");
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = process.env.DEMO_USER_EMAIL?.trim() || "demo@atlas.ai";
-  const password = process.env.DEMO_USER_PASSWORD || "AtlasDemo!2025";
-  const name = process.env.DEMO_USER_NAME?.trim() || "Atlas Demo";
+  const email = process.env.SEED_USER_EMAIL?.trim();
+  const password = process.env.SEED_USER_PASSWORD;
+  const name = process.env.SEED_USER_NAME?.trim() || "Atlas Admin";
+
+  if (!email || !password) {
+    console.log("No SEED_USER_EMAIL/SEED_USER_PASSWORD provided. Skipping user seed.");
+    return;
+  }
 
   const hashedPassword = await hash(password, 12);
 
@@ -24,13 +29,12 @@ async function main() {
     },
   });
 
-  console.log(`Seeded demo user ${user.email} with password "${password}".`);
-  console.log("You can update or disable the demo credentials by setting DEMO_USER_* env vars before running the seed.");
+  console.log(`Seeded user ${user.email}. Remember to store the generated credentials securely.`);
 }
 
 main()
   .catch((error) => {
-    console.error("Failed to seed demo user", error);
+    console.error("Failed to seed initial user", error);
     process.exitCode = 1;
   })
   .finally(async () => {
