@@ -1,32 +1,129 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { ModelCategory } from "@/lib/models";
+import { modelCatalog } from "@/lib/models";
 
-interface Message {
+interface PlaygroundModel {
+  id: string;
+  name: string;
+  category: ModelCategory;
+  shortDescription?: string;
+}
+
+type PlaygroundMode = "llm" | "tts" | "image";
+
+const modeConfig: { id: PlaygroundMode; label: string; description: string }[] = [
+  { id: "llm", label: "Language", description: "Chat with Atlas LLMs to evaluate responses." },
+  { id: "tts", label: "Speech", description: "Convert text to lifelike audio across neural voices." },
+  { id: "image", label: "Vision", description: "Prototype photorealistic or illustrated imagery." },
+];
+
+const fallbackModels: PlaygroundModel[] = modelCatalog.map((model) => ({
+  id: model.id,
+  name: model.name,
+  category: model.category,
+  shortDescription: model.shortDescription,
+}));
+
+const voiceOptions = [
+  { id: "elysian", label: "Elysian · Conversational" },
+  { id: "solstice", label: "Solstice · Warm" },
+  { id: "ion", label: "Ion · Crisp" },
+  { id: "lumen", label: "Lumen · Narration" },
+];
+
+const stylePresets = [
+  "Photoreal", "Editorial", "Concept", "Cyberpunk", "Watercolour", "Line art",
+];
+
+interface PlaygroundMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-const models = [
-  { id: "atlas-large", name: "Atlas Large" },
-  { id: "atlas-lite", name: "Atlas Lite" },
-  { id: "atlas-code", name: "Atlas Code" },
-];
-
 export function PlaygroundPanel() {
-  const [model, setModel] = useState(models[0].id);
+  const [models, setModels] = useState<PlaygroundModel[]>(fallbackModels);
+  const [activeMode, setActiveMode] = useState<PlaygroundMode>("llm");
+
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const response = await fetch("/api/models", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!Array.isArray(data.models)) return;
+        setModels(
+          data.models.map((model: PlaygroundModel) => ({
+            id: model.id,
+            name: model.name,
+            category: model.category,
+            shortDescription: model.shortDescription,
+          })),
+        );
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    void loadModels();
+  }, []);
+
+  const llmModels = useMemo(() => models.filter((model) => model.category === "llm"), [models]);
+  const ttsModels = useMemo(() => models.filter((model) => model.category === "tts"), [models]);
+  const imageModels = useMemo(() => models.filter((model) => model.category === "image"), [models]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
+        {modeConfig.map((mode) => (
+          <Button
+            key={mode.id}
+            type="button"
+            size="sm"
+            variant={activeMode === mode.id ? "default" : "outline"}
+            onClick={() => setActiveMode(mode.id)}
+          >
+            {mode.label}
+          </Button>
+        ))}
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {modeConfig.find((mode) => mode.id === activeMode)?.description}
+      </p>
+
+      {activeMode === "llm" ? <LanguagePlayground models={llmModels} /> : null}
+      {activeMode === "tts" ? <SpeechPlayground models={ttsModels} /> : null}
+      {activeMode === "image" ? <ImagePlayground models={imageModels} /> : null}
+    </div>
+  );
+}
+
+interface LanguagePlaygroundProps {
+  models: PlaygroundModel[];
+}
+
+function LanguagePlayground({ models }: LanguagePlaygroundProps) {
+  const [model, setModel] = useState(models[0]?.id ?? "atlas-llm-pro");
   const [temperature, setTemperature] = useState(0.7);
   const [prompt, setPrompt] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
+
+  useEffect(() => {
+    if (models.length && !models.some((item) => item.id === model)) {
+      setModel(models[0].id);
+    }
+  }, [models, model]);
 
   const codeSnippet = useMemo(() => {
     const maskedKey = "sk-YOUR-API-KEY";
@@ -40,7 +137,7 @@ export function PlaygroundPanel() {
     return `curl -X POST ${baseUrl}/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${maskedKey}" \
-  -d '{\"model\":\"${model}\",\"temperature\":${temperature.toFixed(2)},\"messages\":[{\"role\":\"user\",\"content\":\"${sanitizedPrompt}\"}]}'`;
+  -d '{"model":"${model}","temperature":${temperature.toFixed(2)},"messages":[{"role":"user","content":"${sanitizedPrompt}"}]}'`;
   }, [model, prompt, temperature]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -48,7 +145,7 @@ export function PlaygroundPanel() {
     if (!prompt.trim()) return;
 
     const trimmedPrompt = prompt.trim();
-    const nextMessages: Message[] = [...messages, { role: "user", content: trimmedPrompt }];
+    const nextMessages: PlaygroundMessage[] = [...messages, { role: "user", content: trimmedPrompt }];
     setMessages(nextMessages);
     setPrompt("");
     setIsLoading(true);
@@ -69,7 +166,7 @@ export function PlaygroundPanel() {
         throw new Error(data?.message ?? "Unable to contact the model");
       }
 
-      const reply: Message = {
+      const reply: PlaygroundMessage = {
         role: "assistant",
         content: typeof data.response === "string" ? data.response : "Received an unexpected response.",
       };
@@ -82,8 +179,7 @@ export function PlaygroundPanel() {
         ...prev,
         {
           role: "assistant",
-          content:
-            "We could not load a response from the model. Please check your configuration and try again shortly.",
+          content: "We could not load a response from the model. Please verify your configuration and try again.",
         },
       ]);
     } finally {
@@ -99,9 +195,9 @@ export function PlaygroundPanel() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
+            <Label htmlFor="llm-model">Model</Label>
             <select
-              id="model"
+              id="llm-model"
               value={model}
               onChange={(event) => setModel(event.target.value)}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -149,8 +245,7 @@ export function PlaygroundPanel() {
           </div>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
-              Temperature controls randomness. Lower values make responses more deterministic, while higher values introduce more
-              creativity.
+              Temperature controls randomness. Lower values make responses more deterministic, while higher values introduce more creativity.
             </p>
           </div>
           <Button variant="outline" onClick={() => setShowCode((prev) => !prev)}>
@@ -176,10 +271,7 @@ export function PlaygroundPanel() {
               </div>
             ) : (
               messages.map((message, index) => (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+                <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`max-w-xl rounded-lg px-4 py-3 text-sm shadow-sm ${
                       message.role === "user"
@@ -213,5 +305,261 @@ export function PlaygroundPanel() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+interface SpeechPlaygroundProps {
+  models: PlaygroundModel[];
+}
+
+function SpeechPlayground({ models }: SpeechPlaygroundProps) {
+  const [model, setModel] = useState(models[0]?.id ?? "atlas-voice-studio");
+  const [voice, setVoice] = useState(voiceOptions[0].id);
+  const [script, setScript] = useState("Welcome to the Atlas platform. This sample demonstrates our neural voices.");
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (models.length && !models.some((item) => item.id === model)) {
+      setModel(models[0].id);
+    }
+  }, [models, model]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!script.trim()) return;
+    setIsLoading(true);
+    setStatus(null);
+    setAudioUrl(null);
+
+    try {
+      const response = await fetch("/api/playground/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: script.trim(), model, voice }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to synthesise speech");
+      }
+      if (typeof data.audio === "string") {
+        setAudioUrl(data.audio);
+      }
+      setStatus(data?.message ?? "Playback ready");
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Unable to synthesise speech");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Text to Speech</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="tts-model">Model</Label>
+              <select
+                id="tts-model"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {models.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tts-voice">Voice</Label>
+              <select
+                id="tts-voice"
+                value={voice}
+                onChange={(event) => setVoice(event.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {voiceOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="tts-script">Script</Label>
+            <Textarea
+              id="tts-script"
+              value={script}
+              onChange={(event) => setScript(event.target.value)}
+              rows={4}
+              required
+            />
+            <p className="text-xs text-muted-foreground">Preview up to 800 characters per request.</p>
+          </div>
+          <div className="flex justify-end">
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Synthesising…" : "Generate audio"}
+            </Button>
+          </div>
+        </form>
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        {audioUrl ? (
+          <div className="space-y-2">
+            <Label>Preview</Label>
+            <audio controls src={audioUrl} className="w-full" />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface ImagePlaygroundProps {
+  models: PlaygroundModel[];
+}
+
+function ImagePlayground({ models }: ImagePlaygroundProps) {
+  const [model, setModel] = useState(models[0]?.id ?? "atlas-vision-diffuse");
+  const [prompt, setPrompt] = useState("Ultra-detailed render of a satellite orbit control room with holographic displays");
+  const [style, setStyle] = useState<string | undefined>(stylePresets[0]);
+  const [variations, setVariations] = useState(2);
+  const [images, setImages] = useState<string[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (models.length && !models.some((item) => item.id === model)) {
+      setModel(models[0].id);
+    }
+  }, [models, model]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!prompt.trim()) return;
+    setIsLoading(true);
+    setStatus(null);
+    setImages([]);
+
+    try {
+      const response = await fetch("/api/playground/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompt.trim(), model, style, variations, aspectRatio: "1:1" }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Unable to generate imagery");
+      }
+      if (Array.isArray(data.images)) {
+        setImages(data.images);
+      }
+      setStatus(data?.message ?? "Preview imagery ready");
+    } catch (err) {
+      console.error(err);
+      setStatus(err instanceof Error ? err.message : "Unable to generate imagery");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Text to Image</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="image-model">Model</Label>
+              <select
+                id="image-model"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {models.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="image-style">Style preset</Label>
+              <select
+                id="image-style"
+                value={style ?? ""}
+                onChange={(event) => setStyle(event.target.value || undefined)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">No preset</option>
+                {stylePresets.map((preset) => (
+                  <option key={preset} value={preset}>
+                    {preset}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="image-variations">Variations</Label>
+              <Input
+                id="image-variations"
+                type="number"
+                min={1}
+                max={4}
+                value={variations}
+                onChange={(event) => {
+                  const nextValue = Number(event.target.value);
+                  if (!Number.isNaN(nextValue)) {
+                    setVariations(Math.max(1, Math.min(4, nextValue)));
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="image-prompt">Prompt</Label>
+            <Textarea
+              id="image-prompt"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              rows={4}
+              required
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Rendering…" : "Generate preview"}
+            </Button>
+          </div>
+        </form>
+        {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+        {images.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {images.map((image, index) => (
+              <div key={`${image}-${index}`} className="overflow-hidden rounded-xl border border-border">
+                <Image
+                  src={image}
+                  alt={`Generated preview ${index + 1}`}
+                  width={512}
+                  height={512}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

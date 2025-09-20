@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     if (!gatewayUrl || !playgroundKey) {
       return NextResponse.json(
         {
+          configured: false,
           message: "Playground is not configured",
           response:
             "The platform administrator must configure the Kong gateway credentials before the playground can be used.",
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
     const data = await response.json();
     const reply = data?.choices?.[0]?.message?.content ?? "The model did not return any content.";
 
-    return NextResponse.json({ response: reply });
+    return NextResponse.json({ configured: true, response: reply });
   } catch (error) {
     console.error("Playground request failed", error);
     return NextResponse.json(
