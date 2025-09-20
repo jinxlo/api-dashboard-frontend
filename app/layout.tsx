@@ -1,53 +1,14 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
-
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
 import { getAuthSession } from "@/lib/auth";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 
 import "./globals.css";
 
-const geistSans = localFont({
-  src: [
-    {
-      path: "../node_modules/geist/dist/fonts/geist-sans/Geist-Regular.woff2",
-      style: "normal",
-      weight: "400",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-sans/Geist-Medium.woff2",
-      style: "normal",
-      weight: "500",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-sans/Geist-SemiBold.woff2",
-      style: "normal",
-      weight: "600",
-    },
-  ],
-  variable: "--font-geist-sans",
-});
-
-const geistMono = localFont({
-  src: [
-    {
-      path: "../node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.woff2",
-      style: "normal",
-      weight: "400",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-mono/GeistMono-Medium.woff2",
-      style: "normal",
-      weight: "500",
-    },
-    {
-      path: "../node_modules/geist/dist/fonts/geist-mono/GeistMono-SemiBold.woff2",
-      style: "normal",
-      weight: "600",
-    },
-  ],
-  variable: "--font-geist-mono",
-});
+const geistSans = GeistSans;
+const geistMono = GeistMono;
 
 export const metadata: Metadata = {
   title: "Atlas AI Platform",
