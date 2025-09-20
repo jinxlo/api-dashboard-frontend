@@ -1,5 +1,6 @@
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { compare } from "bcryptjs";
+import { createHash } from "crypto";
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -12,7 +13,31 @@ const credentialsSchema = z.object({
   password: z.string().min(6, { message: "Password is required" }),
 });
 
+const resolvedAuthSecret = (() => {
+  const directSecret =
+    process.env.NEXTAUTH_SECRET ??
+    process.env.AUTH_SECRET ??
+    process.env.AUTHJS_SECRET ??
+    process.env.NEXT_PUBLIC_NEXTAUTH_SECRET;
+
+  if (directSecret && directSecret.trim().length > 0) {
+    return directSecret;
+  }
+
+  const vercelUrl = process.env.VERCEL_URL ?? process.env.NEXTAUTH_URL;
+  if (vercelUrl && vercelUrl.trim().length > 0) {
+    return createHash("sha256").update(vercelUrl).digest("hex");
+  }
+
+  return "atlas-local-development-secret";
+})();
+
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = resolvedAuthSecret;
+}
+
 export const authOptions: NextAuthOptions = {
+  secret: resolvedAuthSecret,
   adapter: PrismaAdapter(prisma),
   session: {
     strategy: "jwt",
