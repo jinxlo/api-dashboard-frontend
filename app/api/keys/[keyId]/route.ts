@@ -1,10 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthSession } from "@/lib/auth";
 
 const adminApiUrl = process.env.KONG_ADMIN_API_URL;
 
-export async function DELETE(_request: Request, { params }: { params: { keyId: string } }) {
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ keyId: string }> },
+) {
   try {
     const session = await getAuthSession();
 
@@ -16,7 +19,7 @@ export async function DELETE(_request: Request, { params }: { params: { keyId: s
       return NextResponse.json({ message: "Kong Admin API is not configured" }, { status: 500 });
     }
 
-    const { keyId } = params;
+    const { keyId } = await params;
 
     const response = await fetch(`${adminApiUrl}/consumers/${session.user.id}/key-auth/${keyId}`, {
       method: "DELETE",
