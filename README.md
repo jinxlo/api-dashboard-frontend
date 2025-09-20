@@ -36,6 +36,10 @@ NEXTAUTH_SECRET="generate-a-secure-secret"
 NEXT_PUBLIC_KONG_API_URL="http://localhost:8000"
 KONG_ADMIN_API_URL="http://localhost:8001"
 KONG_PLAYGROUND_KEY="replace-with-eval-api-key"
+# Optional overrides for the seeded demo login
+# DEMO_USER_EMAIL="demo@atlas.ai"
+# DEMO_USER_PASSWORD="AtlasDemo!2025"
+# DEMO_USER_NAME="Atlas Demo"
 ```
 
 ## Database
@@ -52,6 +56,12 @@ Generate the Prisma client:
 npx prisma generate
 ```
 
+Seed the demo login (defaults to `demo@atlas.ai` / `AtlasDemo!2025` unless `DEMO_USER_*` variables are supplied):
+
+```bash
+npm run db:seed
+```
+
 If you are in an offline environment you can bypass engine checksum checks with `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1`.
 
 ## Development
@@ -64,6 +74,8 @@ npm run dev
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) to use the application. Create an account via the sign up page, then access the dashboard, playground, and settings areas.
+
+The seeded demo credentials (`demo@atlas.ai` / `AtlasDemo!2025`) are always available after `npm run db:seed` unless you override them with `DEMO_USER_*` values.
 
 ## Kong Integration
 
@@ -84,6 +96,26 @@ The playground proxy (`/api/playground/chat`) forwards prompts to the public Kon
 - Full API keys are never stored in the application database.
 - All protected routes, including API endpoints, are guarded by NextAuth middleware.
 - Passwords are hashed with `bcrypt` before persistence.
+
+## Deploying on Vercel
+
+1. **Provision a Postgres database** – add the [Vercel Postgres integration](https://vercel.com/integrations/vercel-postgres) or connect an external provider such as Neon. Copy the generated `POSTGRES_PRISMA_URL`, `POSTGRES_URL`, and `POSTGRES_URL_NON_POOLING` secrets.
+2. **Configure environment variables** – in the Vercel dashboard set the following for your project:
+   - `POSTGRES_PRISMA_URL` (or `DATABASE_URL`) pointing at the production database.
+   - `POSTGRES_URL_NON_POOLING` for local CLI access (optional but recommended).
+   - `NEXTAUTH_URL` equal to your deployment URL (for example `https://your-app.vercel.app`).
+   - `NEXTAUTH_SECRET` (optional). If omitted, the application will derive a deterministic secret, but providing one lets you rotate credentials manually.
+   - `KONG_ADMIN_API_URL`, `KONG_PLAYGROUND_KEY`, and any `DEMO_USER_*` overrides you need.
+3. **Run migrations against the hosted database** – pull the Vercel environment locally and execute the migrations:
+   ```bash
+   vercel env pull .env.production.local
+   DATABASE_URL=$(grep DATABASE_URL .env.production.local | cut -d'=' -f2-) npx prisma migrate deploy
+   DATABASE_URL=$(grep DATABASE_URL .env.production.local | cut -d'=' -f2-) npm run db:seed
+   ```
+   Alternatively, use the `POSTGRES_PRISMA_URL` value directly when running the commands.
+4. **Deploy** – once the database is migrated and seeded, trigger `vercel deploy`. The existing build command (`npm run build`) already runs `prisma generate` so the Prisma Client stays in sync with cached installs.
+
+After deployment you can sign in with the seeded demo credentials and update the password from the in-app settings page.
 
 ## License
 
