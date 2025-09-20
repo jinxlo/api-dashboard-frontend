@@ -2,7 +2,7 @@ import { hash } from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, prismaReady, isDatabaseConfigured } from "@/lib/prisma";
 
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name is required" }),
@@ -22,6 +22,15 @@ export async function POST(request: Request) {
 
     const { name, email, password } = parsed.data;
 
+    if (!isDatabaseConfigured) {
+      return NextResponse.json(
+        { message: "Database connection is not configured" },
+        { status: 503 },
+      );
+    }
+
+    await prismaReady;
+
     const existing = await prisma.user.findUnique({ where: { email } });
 
     if (existing) {
@@ -38,7 +47,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ message: "Account created" });
+    return NextResponse.json({ message: "Account created" }, { status: 201 });
   } catch (error) {
     console.error("Failed to register user", error);
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });

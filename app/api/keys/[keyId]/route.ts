@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthSession } from "@/lib/auth";
+import { deleteKeyForUser, DatabaseNotConfiguredError } from "@/lib/key-store";
 
 const adminApiUrl = process.env.KONG_ADMIN_API_URL;
 
@@ -15,11 +16,22 @@ export async function DELETE(
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    if (!adminApiUrl) {
-      return NextResponse.json({ message: "Kong Admin API is not configured" }, { status: 500 });
-    }
-
     const { keyId } = await params;
+
+    if (!adminApiUrl) {
+      try {
+        await deleteKeyForUser(session.user.id, keyId);
+        return NextResponse.json({ message: "Key revoked" });
+      } catch (error) {
+        if (error instanceof DatabaseNotConfiguredError) {
+          return NextResponse.json(
+            { message: "Database connection is not configured" },
+            { status: 503 },
+          );
+        }
+        throw error;
+      }
+    }
 
     const response = await fetch(`${adminApiUrl}/consumers/${session.user.id}/key-auth/${keyId}`, {
       method: "DELETE",

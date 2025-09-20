@@ -1,8 +1,72 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { getAuthSession } from "@/lib/auth";
+import { createKeyForUser, listKeysForUser, DatabaseNotConfiguredError } from "@/lib/key-store";
+import { getModelById } from "@/lib/models";
 
 const adminApiUrl = process.env.KONG_ADMIN_API_URL;
+
+const createKeySchema = z.object({
+  label: z
+    .string()
+    .trim()
+    .max(80, { message: "Label must be 80 characters or fewer" })
+    .optional(),
+  modelIds: z
+    .array(z.string())
+    .nonempty({ message: "Select at least one model" })
+    .refine((ids) => ids.every((id) => getModelById(id)), {
+      message: "One or more models are not available",
+    }),
+});
+
+function encodeLabelTag(label: string) {
+  return `label:${Buffer.from(label).toString("base64url")}`;
+}
+
+function decodeLabelTag(tag: unknown) {
+  if (typeof tag !== "string" || !tag.startsWith("label:")) {
+    return undefined;
+  }
+  try {
+    return Buffer.from(tag.slice(6), "base64url").toString("utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+function extractModelIdsFromTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .filter((tag): tag is string => typeof tag === "string" && tag.startsWith("model:"))
+    .map((tag) => tag.slice(6))
+    .filter((id) => Boolean(getModelById(id)));
+}
+
+function presentKey(record: {
+  id: string;
+  key: string;
+  createdAt: string;
+  label?: string;
+  modelIds: string[];
+}) {
+  const models = record.modelIds
+    .map((id) => getModelById(id))
+    .filter((model): model is NonNullable<typeof model> => Boolean(model));
+
+  return {
+    id: record.id,
+    key: record.key,
+    createdAt: record.createdAt,
+    label: record.label ?? null,
+    models: models.map((model) => ({
+      id: model.id,
+      name: model.name,
+      category: model.category,
+    })),
+  };
+}
 
 async function ensureConsumer(userId: string) {
   if (!adminApiUrl) {
@@ -40,7 +104,18 @@ export async function GET() {
     }
 
     if (!adminApiUrl) {
-      return NextResponse.json({ message: "Kong Admin API is not configured" }, { status: 500 });
+      try {
+        const keys = await listKeysForUser(session.user.id);
+        return NextResponse.json({ keys: keys.map((key) => presentKey(key)) });
+      } catch (error) {
+        if (error instanceof DatabaseNotConfiguredError) {
+          return NextResponse.json(
+            { message: "Database connection is not configured" },
+            { status: 503 },
+          );
+        }
+        throw error;
+      }
     }
 
     const response = await fetch(`${adminApiUrl}/consumers/${session.user.id}/key-auth`, {
@@ -57,13 +132,19 @@ export async function GET() {
     }
 
     const payload = (await response.json()) as {
-      data?: { id: string; key: string; created_at?: number }[];
+      data?: { id: string; key: string; created_at?: number; tags?: string[] }[];
     };
-    const keys = (payload.data ?? []).map((item) => ({
-      id: item.id,
-      key: item.key,
-      createdAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : new Date().toISOString(),
-    }));
+    const keys = (payload.data ?? []).map((item) => {
+      const modelIds = extractModelIdsFromTags(item.tags ?? []);
+      const label = (item.tags ?? []).map((tag) => decodeLabelTag(tag)).find(Boolean);
+      return presentKey({
+        id: item.id,
+        key: item.key,
+        createdAt: item.created_at ? new Date(item.created_at * 1000).toISOString() : new Date().toISOString(),
+        modelIds,
+        label,
+      });
+    });
 
     return NextResponse.json({ keys });
   } catch (error) {
@@ -72,7 +153,7 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const session = await getAuthSession();
 
@@ -80,17 +161,45 @@ export async function POST() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
+    const json = await request.json().catch(() => null);
+    const parsed = createKeySchema.safeParse(json);
+
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Invalid payload";
+      return NextResponse.json({ message }, { status: 400 });
+    }
+
+    const { label, modelIds } = parsed.data;
+    const normalizedLabel = label?.trim() ? label.trim() : undefined;
+
     if (!adminApiUrl) {
-      return NextResponse.json({ message: "Kong Admin API is not configured" }, { status: 500 });
+      try {
+        const created = await createKeyForUser(session.user.id, modelIds, normalizedLabel);
+        return NextResponse.json(presentKey(created));
+      } catch (error) {
+        if (error instanceof DatabaseNotConfiguredError) {
+          return NextResponse.json(
+            { message: "Database connection is not configured" },
+            { status: 503 },
+          );
+        }
+        throw error;
+      }
     }
 
     await ensureConsumer(session.user.id);
+
+    const tags = modelIds.map((id) => `model:${id}`);
+    if (normalizedLabel) {
+      tags.push(encodeLabelTag(normalizedLabel));
+    }
 
     const response = await fetch(`${adminApiUrl}/consumers/${session.user.id}/key-auth`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({ tags }),
     });
 
     if (!response.ok) {
@@ -99,12 +208,19 @@ export async function POST() {
     }
 
     const payload = await response.json();
+    const createdAt = payload.created_at
+      ? new Date(Number(payload.created_at) * 1000).toISOString()
+      : new Date().toISOString();
 
-    return NextResponse.json({
-      key: payload.key as string,
-      id: payload.id as string,
-      createdAt: payload.created_at ? new Date(payload.created_at * 1000).toISOString() : new Date().toISOString(),
-    });
+    return NextResponse.json(
+      presentKey({
+        id: payload.id as string,
+        key: payload.key as string,
+        createdAt,
+        label: normalizedLabel,
+        modelIds,
+      }),
+    );
   } catch (error) {
     console.error("Failed to create API key", error);
     return NextResponse.json({ message: "Unable to create API key" }, { status: 500 });
