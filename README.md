@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Atlas AI Platform
 
-## Getting Started
+Atlas AI Platform is a secure multi-tenant developer dashboard for provisioning and managing access to a large language model. It provides self-service account creation, API key management powered by Kong Gateway, a chat-style playground, and profile controls built on Next.js 15.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- 🔐 Authentication with NextAuth.js credentials provider and Prisma adapter
+- 🔑 API key lifecycle management integrated with the Kong Admin API
+- 💬 Interactive LLM playground backed by a platform-level evaluation key
+- 👤 Profile and password management with inline validation
+- 📊 Responsive dashboard with usage cards and API key table
+
+## Tech Stack
+
+- [Next.js 15 (App Router)](https://nextjs.org)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [NextAuth.js](https://next-auth.js.org/)
+- [Prisma](https://www.prisma.io/)
+- [shadcn/ui](https://ui.shadcn.com/) inspired component primitives
+
+## Prerequisites
+
+- Node.js 18+
+- PostgreSQL database instance
+- Kong Gateway with admin API access
+
+## Environment Variables
+
+Create a `.env` file based on the provided `.env.example`:
+
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/aiplatform?schema=public"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="generate-a-secure-secret"
+NEXT_PUBLIC_KONG_API_URL="http://localhost:8000"
+KONG_ADMIN_API_URL="http://localhost:8001"
+KONG_PLAYGROUND_KEY="replace-with-eval-api-key"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Database
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Run the Prisma migrations to create the authentication schema:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx prisma migrate deploy
+```
 
-## Learn More
+Generate the Prisma client:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npx prisma generate
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+If you are in an offline environment you can bypass engine checksum checks with `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Development
 
-## Deploy on Vercel
+Install dependencies and start the development server:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm install
+npm run dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Visit [http://localhost:3000](http://localhost:3000) to use the application. Create an account via the sign up page, then access the dashboard, playground, and settings areas.
+
+## Kong Integration
+
+The application expects Kong to manage API keys via the Key Authentication plugin. The `/api/keys` API route will:
+
+1. Ensure a consumer exists for the logged-in user (using the user ID as `custom_id`).
+2. Create new key credentials via `POST /consumers/{consumer}/key-auth`.
+3. Return generated keys directly to the client without persisting them.
+
+Revoking a key issues `DELETE /consumers/{consumer}/key-auth/{keyId}`. The dashboard lists available keys by calling the Kong Admin API.
+
+## Testing the Playground
+
+The playground proxy (`/api/playground/chat`) forwards prompts to the public Kong gateway using the `KONG_PLAYGROUND_KEY`. This isolates evaluation traffic from production API keys.
+
+## Security Considerations
+
+- Full API keys are never stored in the application database.
+- All protected routes, including API endpoints, are guarded by NextAuth middleware.
+- Passwords are hashed with `bcrypt` before persistence.
+
+## License
+
+This project is provided for demonstration purposes.
