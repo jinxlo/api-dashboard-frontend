@@ -5,15 +5,25 @@ import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { z } from "zod";
 
-import { prisma } from "./prisma";
+import { prisma, prismaReady, isDatabaseConfigured } from "./prisma";
+import { resolveNextAuthSecret } from "./auth-secret";
 
 const credentialsSchema = z.object({
   email: z.string().email({ message: "Valid email is required" }),
   password: z.string().min(6, { message: "Password is required" }),
 });
 
+const resolvedAuthSecret = resolveNextAuthSecret();
+
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = resolvedAuthSecret;
+}
+
+await prismaReady;
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  secret: resolvedAuthSecret,
+  adapter: isDatabaseConfigured ? PrismaAdapter(prisma) : undefined,
   session: {
     strategy: "jwt",
   },
@@ -28,6 +38,10 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        if (!isDatabaseConfigured) {
+          throw new Error("Database connection is not configured. Please contact the workspace administrator.");
+        }
+        await prismaReady;
         const parsed = credentialsSchema.safeParse(credentials);
 
         if (!parsed.success) {
@@ -63,7 +77,8 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.name = user.name;
         token.email = user.email;
-      } else if (token.sub && (!token.name || !token.email)) {
+      } else if (isDatabaseConfigured && token.sub && (!token.name || !token.email)) {
+        await prismaReady;
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
           select: { name: true, email: true },
