@@ -6,13 +6,21 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { z } from "zod";
 
 import { prisma } from "./prisma";
+import { resolveNextAuthSecret } from "./auth-secret";
 
 const credentialsSchema = z.object({
   email: z.string().email({ message: "Valid email is required" }),
   password: z.string().min(6, { message: "Password is required" }),
 });
 
+const resolvedAuthSecret = resolveNextAuthSecret();
+
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = resolvedAuthSecret;
+}
+
 export const authOptions: NextAuthOptions = {
+  secret: resolvedAuthSecret,
   adapter: PrismaAdapter(prisma),
   session: {
     strategy: "jwt",
