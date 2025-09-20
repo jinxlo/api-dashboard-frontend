@@ -11,6 +11,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 const schema = z.object({
   email: z.string().email({ message: "Enter a valid email" }),
@@ -19,7 +20,12 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function SignInForm() {
+type SignInFormProps = {
+  tone?: "default" | "inverted";
+  className?: string;
+};
+
+export function SignInForm({ tone = "default", className }: SignInFormProps) {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const {
@@ -45,33 +51,59 @@ export function SignInForm() {
     window.location.href = result?.url ?? "/dashboard";
   });
 
+  const labelClass = tone === "inverted" ? "text-white/80" : undefined;
+  const inputClass =
+    tone === "inverted"
+      ? "border-white/10 bg-white/5 text-white placeholder:text-white/50 focus-visible:ring-white/40 focus-visible:ring-offset-0"
+      : undefined;
+  const helperTextClass = tone === "inverted" ? "text-rose-300" : "text-destructive";
+  const footerTextClass = tone === "inverted" ? "text-white/60" : "text-muted-foreground";
+  const footerLinkClass = tone === "inverted" ? "text-primary-foreground" : "text-primary";
+
   return (
-    <div className="space-y-6">
+    <div className={cn("space-y-6", className)}>
       <div className="space-y-2 text-center">
         <h1 className="text-2xl font-semibold">Welcome back</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className={cn("text-sm", tone === "inverted" ? "text-white/60" : "text-muted-foreground")}>
           Sign in with your developer credentials to access the dashboard.
         </p>
       </div>
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" placeholder="you@example.com" autoComplete="email" {...register("email")} />
-          {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
+          <Label htmlFor="email" className={labelClass}>
+            Email
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
+            className={inputClass}
+            {...register("email")}
+          />
+          {errors.email ? <p className={cn("text-sm", helperTextClass)}>{errors.email.message}</p> : null}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
-          <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
-          {errors.password ? <p className="text-sm text-destructive">{errors.password.message}</p> : null}
+          <Label htmlFor="password" className={labelClass}>
+            Password
+          </Label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            className={inputClass}
+            {...register("password")}
+          />
+          {errors.password ? <p className={cn("text-sm", helperTextClass)}>{errors.password.message}</p> : null}
         </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p className={cn("text-sm", helperTextClass)}>{error}</p> : null}
         <Button type="submit" className="w-full" disabled={isSubmitting}>
           {isSubmitting ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-      <p className="text-center text-sm text-muted-foreground">
+      <p className={cn("text-center text-sm", footerTextClass)}>
         Don&apos;t have an account?{" "}
-        <Link href="/signup" className="font-semibold text-primary">
+        <Link href="/signup" className={cn("font-semibold", footerLinkClass)}>
           Create one
         </Link>
       </p>

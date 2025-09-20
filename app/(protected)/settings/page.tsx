@@ -4,9 +4,13 @@ import { PasswordForm } from "@/components/settings/password-form";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAuthSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, prismaReady, isDatabaseConfigured } from "@/lib/prisma";
 
 export default async function SettingsPage() {
+  if (!isDatabaseConfigured) {
+    redirect("/signin");
+  }
+  await prismaReady;
   const session = await getAuthSession();
 
   if (!session?.user?.id) {
