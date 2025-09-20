@@ -2,7 +2,7 @@ import { hash } from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, prismaReady, isDatabaseConfigured } from "@/lib/prisma";
 
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name is required" }),
@@ -12,6 +12,13 @@ const registerSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    if (!isDatabaseConfigured) {
+      return NextResponse.json(
+        { message: "User registration is temporarily unavailable while the database connection is not configured." },
+        { status: 503 },
+      );
+    }
+    await prismaReady;
     const json = await request.json();
     const parsed = registerSchema.safeParse(json);
 
